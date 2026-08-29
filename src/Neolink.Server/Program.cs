@@ -932,7 +932,10 @@ if (config.WebPort > 0)
     // Web-UI accounts (users.json in the state dir). Auth is off until the
     // first account (the admin) is created from the UI itself.
     var userStore = new UserStore(stateDir, legacyDir: configDir);
-    if (!userStore.Enabled)
+    if (config.Ui.ExternalAuth)
+        Log.Info("Web UI authentication is delegated to a trusted reverse proxy; local account setup is disabled" +
+                 (config.Ui.ExternalAuthAdmin ? " and proxy-authorized users have admin access" : ""));
+    else if (!userStore.Enabled)
         Log.Info("Web UI authentication is off — create the admin account from the UI to enable it");
     if (config.EffectiveResetAdminPassword)
         Log.Warn("reset_admin_password is TRUE: anyone reaching the login page can set a new admin " +
@@ -958,6 +961,8 @@ if (config.WebPort > 0)
         Forecast = storageForecast,
         Secrets = secretProtector,
         UserStore = userStore,
+        ExternalAuth = config.Ui.ExternalAuth,
+        ExternalAuthAdmin = config.Ui.ExternalAuth && config.Ui.ExternalAuthAdmin,
         ResetAdminPassword = config.EffectiveResetAdminPassword,
         TrickleSpeed = config.Ui.TrickleSpeed,
         TalkEnabled = config.Ui.Talk,

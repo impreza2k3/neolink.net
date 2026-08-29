@@ -1154,8 +1154,14 @@
                                 @onclick='() => _settingsTab = "general"'>@UiIcon.Render("gear", 13) @T["General"]</button>
                         <button class="settings-tab @(_settingsTab == "cameras" ? "active" : "")" role="tab"
                                 @onclick="OpenCamerasTabAsync">@UiIcon.Render("film", 13) @T["Cameras"]</button>
-                        <button class="settings-tab @(_settingsTab == "users" ? "active" : "")" role="tab"
-                                @onclick="SelectUsersTabAsync">@UiIcon.Render("user", 13) @T["Users"]</button>
+                        @if (_authEnabled)
+                        {
+                            <button class="settings-tab @(_settingsTab == "users" ? "active" : "")" role="tab"
+                                    @onclick="SelectUsersTabAsync">@UiIcon.Render("user", 13) @T["Users"]</button>
+                        }
+                        <a class="settings-tab" href="logs" title="@T["Open the live server log tail"]">
+                            @UiIcon.Render("logs", 13) @T["Logs"]
+                        </a>
                     }
                     <button class="settings-tab @(_settingsTab == "connection" ? "active" : "")" role="tab"
                             @onclick="OpenConnectionTabAsync">@UiIcon.Render("activity", 13) @T["Connection"]</button>
@@ -2552,7 +2558,10 @@
     private readonly List<ApiCamera> _cameras = new();
     private List<ViewSlot> _slots = new();
     private string _mode = "grid";
-    private int _count = 4;
+    private int _count = 6;
+    /// <summary>The signed-in account has no saved wall yet. Once cameras arrive,
+    /// seed its first view with every configured camera in a six-tile grid.</summary>
+    private bool _initializeDefaultWall;
     private ViewSnapshot? _backup; // legacy theater-detour maximize (old persisted states)
 
     // In-place maximize: the tile at _maxIndex fills the stage while the OTHER
@@ -3611,9 +3620,17 @@
             using var res = await Http.SendAsync(ApiRequest(HttpMethod.Get, "/api/me/settings"));
             if (!res.IsSuccessStatusCode) return;
             var json = await res.Content.ReadAsStringAsync();
-            if (string.IsNullOrWhiteSpace(json) || json.Trim() == "{}") return;
+            if (string.IsNullOrWhiteSpace(json) || json.Trim() == "{}")
+            {
+                _initializeDefaultWall = true;
+                return;
+            }
             var v = JsonSerializer.Deserialize<PersistedView>(json);
-            if (v != null) ApplyView(v);
+            if (v != null)
+            {
+                _initializeDefaultWall = false;
+                ApplyView(v);
+            }
         }
         catch { }
     }
@@ -4839,6 +4856,19 @@
             var cams = await res.Content.ReadFromJsonAsync<List<ApiCamera>>(cancellationToken: fetchCts.Token);
             _cameras.Clear();
             if (cams != null) _cameras.AddRange(cams);
+            if (_initializeDefaultWall && _cameras.Count > 0)
+            {
+                _mode = "grid";
+                _count = Math.Min(6, _cameras.Count);
+                _slots = _cameras.Take(_count).Select(cam =>
+                {
+                    var stream = DefaultStream(cam);
+                    return new ViewSlot { Camera = cam.Name, Kind = stream?.Kind, Path = stream?.Path };
+                }).ToList();
+                EnsureSlots();
+                _initializeDefaultWall = false;
+                await SaveAsync();
+            }
             SyncClipStates();
             await MaybeNotifyCamerasAsync();
             _error = null;

@@ -306,6 +306,8 @@ public sealed class NeolinkConfig
                 case "bind": config.WebBind = prop.Value.GetString(); break;
                 // UI-only settings
                 case "statedir": config.Ui.StateDir = prop.Value.GetString(); break;
+                case "externalauth": config.Ui.ExternalAuth = prop.Value.GetBoolean(); break;
+                case "externalauthadmin": config.Ui.ExternalAuthAdmin = prop.Value.GetBoolean(); break;
                 case "resetadminpassword": config.Ui.ResetAdminPassword = prop.Value.GetBoolean(); break;
                 case "tricklespeed": config.Ui.TrickleSpeed = prop.Value.GetDouble(); break;
                 case "talk": config.Ui.Talk = prop.Value.GetBoolean(); break;
@@ -379,6 +381,8 @@ public sealed class NeolinkConfig
             if (MiniToml.GetInt(ui, "port") is { } p) config.WebPort = (int)p;
             config.WebBind = MiniToml.GetString(ui, "bind") ?? config.WebBind;
             config.Ui.StateDir = MiniToml.GetString(ui, "state_dir");
+            config.Ui.ExternalAuth = MiniToml.GetBool(ui, "external_auth") ?? false;
+            config.Ui.ExternalAuthAdmin = MiniToml.GetBool(ui, "external_auth_admin") ?? false;
             config.Ui.ResetAdminPassword = MiniToml.GetBool(ui, "reset_admin_password") ?? false;
             if (MiniToml.GetInt(ui, "trickle_speed") is { } ts) config.Ui.TrickleSpeed = ts;
             config.Ui.Talk = MiniToml.GetBool(ui, "talk") ?? false;
@@ -698,6 +702,17 @@ public sealed class UiConfig
     /// if the config is mounted read-only or replaced on deployments.
     /// </summary>
     public string? StateDir { get; set; }
+    /// <summary>
+    /// Authentication is enforced by a trusted reverse proxy. Local account setup
+    /// stays disabled and the UI does not show the first-run security prompt.
+    /// </summary>
+    public bool ExternalAuth { get; set; }
+    /// <summary>
+    /// Users admitted by the trusted reverse proxy may manage server settings.
+    /// This is intentionally separate from ExternalAuth so viewer-only deployments
+    /// do not acquire administrative access by enabling SSO.
+    /// </summary>
+    public bool ExternalAuthAdmin { get; set; }
     /// <summary>Recovery: while true, the login screen allows setting a new admin password.</summary>
     public bool ResetAdminPassword { get; set; }
     /// <summary>Playback rate of the review-strip's ambient clip previews.</summary>
