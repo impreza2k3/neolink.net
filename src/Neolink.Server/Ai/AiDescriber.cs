@@ -1064,8 +1064,10 @@ public sealed class AiDescriber
                     },
                 });
             }
-            // Only fields every OpenAI-compatible server understands — vendor
-            // extensions get 400s from strict ones.
+            // Keep the portable OpenAI-compatible core, but when the operator
+            // explicitly disables thinking also send the standard reasoning
+            // control understood by current llama.cpp/Qwen servers. The
+            // prompt marker above remains for older Qwen templates.
             var oai = new Dictionary<string, object>
             {
                 ["messages"] = new object[]
@@ -1081,6 +1083,8 @@ public sealed class AiDescriber
             };
             if (!string.IsNullOrWhiteSpace(cfg.Model))
                 oai["model"] = cfg.Model.Trim();
+            if (cfg.NoThink)
+                oai["reasoning_effort"] = "none";
             payload = oai;
         }
 

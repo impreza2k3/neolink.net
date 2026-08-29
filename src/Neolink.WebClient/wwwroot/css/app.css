@@ -2429,6 +2429,7 @@ body.is-fullscreen .fs-exit { display: inline-flex; }
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
+    text-decoration: none;
     white-space: nowrap;
     transition: background 0.12s ease, color 0.12s ease;
 }

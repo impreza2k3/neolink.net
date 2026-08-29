@@ -114,11 +114,13 @@ public sealed class UserStore
         }
     }
 
-    /// <summary>Authentication is enforced once any account exists — and while the
-    /// account list is unreadable, when nobody may sign in at all.</summary>
+    /// <summary>Authentication is enforced once any password-backed local account
+    /// exists — and while the account list is unreadable, when nobody may sign in
+    /// at all. Proxy-backed identities have an empty hash so they can retain UI
+    /// settings without turning the local login screen back on.</summary>
     public bool Enabled
     {
-        get { lock (_gate) return _users.Count > 0 || _loadFailed; }
+        get { lock (_gate) return _loadFailed || _users.Any(u => !string.IsNullOrEmpty(u.Hash)); }
     }
 
     // ------------------------------------------------------------------ passwords
@@ -179,8 +181,20 @@ public sealed class UserStore
         ValidatePassword(password);
         lock (_gate)
         {
-            if (Find(name) != null)
+            var existing = Find(name);
+            if (existing != null && !string.IsNullOrEmpty(existing.Hash))
                 throw new ArgumentException($"user '{name}' already exists");
+            if (existing != null)
+            {
+                // A deployment may leave external auth later. Promote its settings-only
+                // identity into a normal local account instead of trapping setup behind
+                // an already-used name.
+                existing.Hash = HashPassword(password);
+                existing.Admin = admin;
+                if (language != null) existing.Lang = language;
+                SaveLocked();
+                return existing;
+            }
             var user = new UserRecord
             {
                 Name = name,
@@ -190,6 +204,34 @@ public sealed class UserStore
             };
             _users.Add(user);
             SaveLocked();
+            return user;
+        }
+    }
+
+    /// <summary>Gets or creates a settings-only identity authenticated by a trusted
+    /// reverse proxy. It has no usable local password and does not enable local auth.</summary>
+    public UserRecord EnsureExternal(string name, bool admin)
+    {
+        ValidateName(name);
+        lock (_gate)
+        {
+            // Do not overwrite an unreadable users.json merely to seed proxy state.
+            // The external identity can remain ephemeral until the file is repaired.
+            if (_loadFailed)
+                return new UserRecord { Name = name, Admin = admin };
+
+            var user = Find(name);
+            if (user == null)
+            {
+                user = new UserRecord { Name = name, Admin = admin };
+                _users.Add(user);
+                SaveLocked();
+            }
+            else if (string.IsNullOrEmpty(user.Hash) && user.Admin != admin)
+            {
+                user.Admin = admin;
+                SaveLocked();
+            }
             return user;
         }
     }
