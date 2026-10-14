@@ -23,7 +23,8 @@ public sealed record EventInfo(string Camera, IReadOnlyList<string> Labels,
 /// "Person on Driveway at 14:32", not the email's story.</summary>
 public sealed record Alert(string Key, bool Recovery, string Subject, string Headline,
     string Body, string? Context = null, IReadOnlyList<EmailAttachment>? Attachments = null,
-    AlertChannels Channels = AlertChannels.All, EventInfo? Event = null, string? Brief = null);
+    AlertChannels Channels = AlertChannels.All, EventInfo? Event = null, string? Brief = null,
+    string? HtmlBody = null);
 
 /// <summary>A file riding along with an email (event snapshots).</summary>
 public sealed record EmailAttachment(string Name, string ContentType, byte[] Data);

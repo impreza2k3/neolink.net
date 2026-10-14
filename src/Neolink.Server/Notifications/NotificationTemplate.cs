@@ -16,11 +16,13 @@ internal static class NotificationTemplate
 {
     public static (string Html, string Text) Render(Alert a, string serverName)
     {
-        var accent = a.Recovery ? "#16a34a" : "#dc2626";       // green / red
-        var badge = a.Recovery ? "RESOLVED" : "ALERT";
+        var digest = a.Key.StartsWith("daily-digest:", StringComparison.Ordinal);
+        var accent = digest ? "#1d4ed8" : a.Recovery ? "#16a34a" : "#dc2626";
+        var badge = digest ? "DAILY DIGEST" : a.Recovery ? "RESOLVED" : "ALERT";
         var when = DateTimeOffset.Now.ToString("ddd d MMM yyyy · HH:mm zzz");
 
         string H(string s) => WebUtility.HtmlEncode(s);
+        var bodyHtml = a.HtmlBody ?? H(a.Body).Replace("\r\n", "\n").Replace("\n", "<br>");
         var contextRow = string.IsNullOrEmpty(a.Context) ? "" :
             $"<tr><td style=\"padding:2px 0;color:#6b7280;\">Details</td><td style=\"padding:2px 0;\">{H(a.Context!)}</td></tr>";
 
@@ -36,7 +38,7 @@ internal static class NotificationTemplate
                   <div style="font-size:19px;font-weight:700;color:#111827;">{{H(a.Headline)}}</div>
                 </td></tr>
                 <tr><td style="padding:6px 20px 16px;color:#374151;font-size:14px;line-height:1.5;">
-                  {{H(a.Body)}}
+                  {{bodyHtml}}
                 </td></tr>
                 <tr><td style="padding:0 20px 20px;">
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;border-top:1px solid #e5e7eb;padding-top:12px;">
