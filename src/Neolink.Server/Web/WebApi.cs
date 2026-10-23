@@ -110,6 +110,10 @@ public sealed class WebApiOptions
     /// <summary>The server secret (key source/fingerprint reporting for admins).</summary>
     public Neolink.Notifications.SecretProtector? Secrets { get; init; }
     public required UserStore UserStore { get; init; }
+    /// <summary>Authentication is enforced by a trusted reverse proxy.</summary>
+    public bool ExternalAuth { get; init; }
+    /// <summary>Users admitted by that proxy receive Neolink admin permissions.</summary>
+    public bool ExternalAuthAdmin { get; init; }
     public bool ResetAdminPassword { get; init; }
     public double TrickleSpeed { get; init; } = 4;
     /// <summary>Beta: two-way talk (browser mic → camera speaker). Off unless ui.talk enables it.</summary>
@@ -409,6 +413,9 @@ public static class WebApi
         var events = o.Events;
         var recordingSettings = o.RecordingSettings;
         var userStore = o.UserStore;
+        var externalAuth = o.ExternalAuth;
+        var externalAuthAdmin = o.ExternalAuthAdmin;
+        var externalUser = externalAuth ? userStore.EnsureExternal("admin", externalAuthAdmin) : null;
         // Sign-in protection (opt-in): reads its live settings from the store, so
         // an admin's save applies to the very next attempt with no restart.
         var loginGuard = new LoginGuard(userStore.GetSecurity);
@@ -494,7 +501,9 @@ public static class WebApi
         // stay session-only.
         app.Use(async (ctx, next) =>
         {
-            if (userStore.Enabled
+            if (externalUser != null)
+                ctx.Items["authUser"] = externalUser;
+            if (!externalAuth && userStore.Enabled
                 && ctx.Request.Path.StartsWithSegments("/api")
                 && !ctx.Request.Path.StartsWithSegments("/api/auth"))
             {
@@ -527,7 +536,8 @@ public static class WebApi
             await next();
         });
 
-        bool IsAdmin(HttpContext ctx) => ctx.Items["authUser"] is UserRecord { Admin: true };
+        bool IsAdmin(HttpContext ctx) => externalAuthAdmin
+            || ctx.Items["authUser"] is UserRecord { Admin: true };
         string? SessionName(HttpContext ctx) => (ctx.Items["authUser"] as UserRecord)?.Name;
         // The cameras a signed-in normal account is limited to; null = no limit.
         static HashSet<string>? LimitOf(UserRecord? user) =>
@@ -551,14 +561,14 @@ public static class WebApi
 
         app.MapGet("/api/auth/status", (HttpContext ctx) =>
         {
-            var user = userStore.Enabled ? SessionUser(ctx) : null;
+            var user = externalUser ?? (userStore.Enabled ? SessionUser(ctx) : null);
             return Results.Json(new
             {
-                enabled = userStore.Enabled,
-                setupRequired = !userStore.Enabled && !o.Demo,
-                resetAvailable = resetAdminPassword && userStore.Enabled,
+                enabled = !externalAuth && userStore.Enabled,
+                setupRequired = !externalAuth && !userStore.Enabled && !o.Demo,
+                resetAvailable = !externalAuth && resetAdminPassword && userStore.Enabled,
                 user = user?.Name,
-                admin = user?.Admin ?? false,
+                admin = externalAuthAdmin || (user?.Admin ?? false),
                 // The account's own language (null = follows the default) and the
                 // default itself, so the UI can show both without a second call.
                 language = user?.Lang,
@@ -569,6 +579,8 @@ public static class WebApi
         // First account = the admin; creating it is what turns authentication on.
         app.MapPost("/api/auth/setup", (CredentialsRequest req) =>
         {
+            if (externalAuth)
+                return Results.Json(new { error = "local account setup is disabled by external authentication" }, statusCode: 403);
             // On a shared demo, whoever creates the admin account owns the server
             // for everyone — and unlocks the whole AdminOnly surface (config,
             // camera test's outbound connects, SMTP). Keeping accounts impossible
@@ -734,13 +746,17 @@ public static class WebApi
 
         // Account management (admin only). Normal users are added by the admin.
         app.MapGet("/api/users", (HttpContext ctx) =>
-            !IsAdmin(ctx)
+            externalAuth
+                ? Results.Json(new { error = "local accounts are disabled by external authentication" }, statusCode: 403)
+                : !IsAdmin(ctx)
                 ? Results.Json(new { error = "admin only" }, statusCode: 403)
                 : Results.Json(userStore.List().Select(u => new { name = u.Name, admin = u.Admin, cameras = u.Cameras })));
 
         // Which cameras a normal account may see: null = all, a list = only those.
         app.MapPut("/api/users/{name}/cameras", (string name, UserCamerasRequest req, HttpContext ctx) =>
         {
+            if (externalAuth)
+                return Results.Json(new { error = "local accounts are disabled by external authentication" }, statusCode: 403);
             if (!IsAdmin(ctx))
                 return Results.Json(new { error = "admin only" }, statusCode: 403);
             if (req.Cameras?.FirstOrDefault(c => !cameras.Any(k => string.Equals(k.Name, c, StringComparison.OrdinalIgnoreCase)))
@@ -758,6 +774,8 @@ public static class WebApi
 
         app.MapPost("/api/users", (CredentialsRequest req, HttpContext ctx) =>
         {
+            if (externalAuth)
+                return Results.Json(new { error = "local accounts are disabled by external authentication" }, statusCode: 403);
             if (!IsAdmin(ctx))
                 return Results.Json(new { error = "admin only" }, statusCode: 403);
             if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrEmpty(req.Password))
@@ -775,6 +793,8 @@ public static class WebApi
 
         app.MapPut("/api/users/{name}", (string name, PasswordRequest req, HttpContext ctx) =>
         {
+            if (externalAuth)
+                return Results.Json(new { error = "local accounts are disabled by external authentication" }, statusCode: 403);
             if (!IsAdmin(ctx))
                 return Results.Json(new { error = "admin only" }, statusCode: 403);
             if (string.IsNullOrEmpty(req.Password))
@@ -793,6 +813,8 @@ public static class WebApi
 
         app.MapDelete("/api/users/{name}", (string name, HttpContext ctx) =>
         {
+            if (externalAuth)
+                return Results.Json(new { error = "local accounts are disabled by external authentication" }, statusCode: 403);
             if (!IsAdmin(ctx))
                 return Results.Json(new { error = "admin only" }, statusCode: 403);
             return userStore.Delete(name)

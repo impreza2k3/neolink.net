@@ -7609,6 +7609,34 @@ public static class SelfTest
             Assert(new Notifications.SecretProtector(other).Unprotect(token) == null, "wrong key -> null");
         });
 
+        Test("notification email: readable digest and safe timestamp link", () =>
+        {
+            var alert = new Notifications.Alert("daily-digest:2026-10-01", false,
+                "Daily summary", "Human events", "First line\nSecond line",
+                HtmlBody: "<a href=\"http://localhost/events?event=abc%2F123\">06:12:34</a>");
+            var rendered = Notifications.NotificationTemplate.Render(alert, "test server");
+            Assert(rendered.Html.Contains("DAILY DIGEST"), "digest has neutral header");
+            Assert(rendered.Html.Contains("href=\"http://localhost/events?event=abc%2F123\""),
+                "timestamp link preserved");
+            Assert(rendered.Text.Contains("First line\nSecond line"), "plain text retains lines");
+            var ordinary = Notifications.NotificationTemplate.Render(alert with
+                { Key = "test", HtmlBody = null, Body = "A & B\nNext" }, "test server");
+            Assert(ordinary.Html.Contains("A &amp; B<br>Next"), "ordinary lines and HTML escaped");
+        });
+
+        Test("daily digest: overnight section boundaries", () =>
+        {
+            var due = new DateTime(2026, 10, 2, 6, 30, 0, DateTimeKind.Local);
+            Assert(!Notifications.DailyDigest.IsOvernightLocal(
+                new DateTime(2026, 10, 1, 21, 59, 59), due), "before 10 PM is daytime");
+            Assert(Notifications.DailyDigest.IsOvernightLocal(
+                new DateTime(2026, 10, 1, 22, 0, 0), due), "10 PM starts overnight");
+            Assert(Notifications.DailyDigest.IsOvernightLocal(
+                new DateTime(2026, 10, 2, 6, 29, 59), due), "6:29:59 AM stays overnight");
+            Assert(!Notifications.DailyDigest.IsOvernightLocal(
+                new DateTime(2026, 10, 2, 6, 30, 0), due), "6:30 AM ends overnight");
+        });
+
         Test("notification store: password encrypted + write-only", () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), $"neolink-selftest-{Guid.NewGuid():N}");

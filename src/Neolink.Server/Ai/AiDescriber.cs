@@ -1067,8 +1067,8 @@ public sealed class AiDescriber
                     },
                 });
             }
-            // Only fields every OpenAI-compatible server understands — vendor
-            // extensions get 400s from strict ones. reasoning_effort is opt-in for that reason.
+            // Preserve the existing no-thinking mode for compatible servers;
+            // an explicit reasoning effort takes precedence when configured.
             var oai = new Dictionary<string, object>
             {
                 ["messages"] = new object[]
@@ -1086,6 +1086,8 @@ public sealed class AiDescriber
                 oai["model"] = cfg.Model.Trim();
             if (cfg.ReasoningEffort.Length > 0)
                 oai["reasoning_effort"] = cfg.ReasoningEffort;
+            else if (cfg.NoThink)
+                oai["reasoning_effort"] = "none";
             payload = oai;
         }
 
